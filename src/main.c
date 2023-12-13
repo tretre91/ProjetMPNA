@@ -81,7 +81,7 @@ void matvec_product_col_major(int M, int N, const double* A, const int lda, cons
 double compute_residual(int N, const double* A, int lda, double eigval, const double* eigvec) {
     double residual = 0;
     for (int i = 0; i < N; i++) {
-        double x = dot_product(N, &A[i * lda], eigvec) + eigval * eigvec[i];
+        double x = dot_product(N, &A[i * lda], eigvec) - eigval * eigvec[i];
         residual += x * x;
     }
 
@@ -103,6 +103,37 @@ double compute_complex_residual(int N, const double* A, int lda, double eigval_r
 }
 
 
+int pseudo_inverse(int N, const double* A, int lda, double* B, int ldb) {
+    // A: mxn, U: mxm, s: mxn, V: nxn
+    double* work = malloc(N * N * sizeof(*work));
+    for (int i = 0; i < N; i++) {
+        memcpy(&work[i * N], &A[i * lda], N * sizeof(double));
+    }
+    double* s = malloc(N * sizeof(*s));
+    double* U = malloc(N * N * sizeof(*U));
+    double* Vt = malloc(N * N * sizeof(*Vt));
+    int info = LAPACKE_dgesdd(LAPACK_COL_MAJOR, 'A', N, N, work, N, s, U, N, Vt, N);
+    // int info = LAPACKE_dgesdd(LAPACK_COL_MAJOR, 'A', N, N, work, N, s, Vt, N, U, N);
+
+    // s^-1
+    // for (int i = 0; i < dim_s; i++) {
+    //     s[i] = 1 / s[i];
+    // }
+
+    for (int i = 0; i < N; i++) {
+        cblas_dscal(N, 1 / s[i], &U[i * N], 1);
+    }
+
+    cblas_dgemm(CblasColMajor, CblasTrans, CblasTrans, N, N, N, 1, Vt, N, U, N, 0, B, ldb);
+
+    free(work);
+    free(U);
+    free(s);
+    free(Vt);
+    return info;
+}
+
+
 typedef struct prr_ret_type {
     int s;
     double residual;
@@ -110,7 +141,7 @@ typedef struct prr_ret_type {
     double* eigvecs;
 } prr_ret_type;
 
-prr_ret_type prr(int N, const double* A, int lda, const double* y0, int s, int m, double epsilon, int max_iterations, bool verbose) {
+prr_ret_type prr(int N, const double* A, int lda, const double* y0, int s, int m, double epsilon, int max_iterations, int verbose) {
     double Vm[N * (m + 1)];
     double B_m1[m * m];
     double B_m[m * m];
@@ -120,7 +151,7 @@ prr_ret_type prr(int N, const double* A, int lda, const double* y0, int s, int m
 
     double* eigvals = NULL;
     double* eigvecs = NULL;
-    double* q = malloc(m * N * sizeof(*q));
+    double* q = malloc((s + 1) * N * sizeof(*q));
     int real_s = 0;
 
 
@@ -159,53 +190,51 @@ prr_ret_type prr(int N, const double* A, int lda, const double* y0, int s, int m
 
         B_m[(m - 1) * m + m - 1] = dot_product(N, &Vm[(m - 1) * N], &Vm[m * N]);
 
-        // if (verbose) {
-        //     printf("B_m-1 =\n");
-        //     print_matrix(m, m, B_m1);
-        // }
+        if (verbose) {
+            printf("B_m-1 =\n");
+            print_matrix(m, m, B_m1);
+        }
+
 
         // étape 2 : résolution dans le sous-espace
-        //
-        //     double B_m1[16] = {
-        // 1, 15.3697, 264.72, 4542.92,
-        // 15.3697, 264.72, 4542.92, 77981.1,
-        // 264.72, 4542.92, 77981.1, 1.33856e+06,
-        // 4542.92, 77981.1, 1.33856e+06, 2.29765e+07
-        //     };
-        //         if (verbose){
-        //             printf("B_m-1 =\n");
-        //             print_matrix(m, m, B_m1);
+
+                // for (int i = 0; i < m; i++) {
+                //     B_m1[i * m + i] += copysign(1e-18, B_m1[i * m + i]);
+                // }
+        // int32_t* ipiv = malloc(m * sizeof(*ipiv));
+        // int info = LAPACKE_dsytrf(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
+        // // int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, m, m, B_m1, m, ipiv);
+        // if (info != 0) {
+        //     printf("After dsytrf, info = %d\n", info);
+        //     // print_matrix(m, m, B_m1);
+        //     if (info > 0) {
+        //         for (int i = 0; i < m; i++) {
+        //             B_m1[i * m + i] += copysign(1e-10, B_m1[i * m + i]);
         //         }
+        //         // B_m1[(info - 1) * m + (info - 1)] = 1e-15;
+        //     }
+        //     // exit(EXIT_FAILURE);
+        // }
+        // info = LAPACKE_dsytri(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
+        // // info = LAPACKE_dgetri(LAPACK_COL_MAJOR, m, B_m1, m, ipiv);
+        // if (info != 0) {
+        //     printf("After dsytri, info = %d\n", info);
+        //     // print_matrix(m, m, B_m1);
+        //     exit(EXIT_FAILURE);
+        // }
+        // free(ipiv);
 
-        double* Bm_11 = malloc(m * m * sizeof(double));
-        memcpy(Bm_11, B_m1, m * m * sizeof(double));
-
-        int32_t* ipiv = malloc(m * sizeof(*ipiv));
-        LAPACKE_dsytrf(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
-        LAPACKE_dsytri(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
-        free(ipiv);
+        int info = pseudo_inverse(m, B_m1, m, B_m1, m);
+        printf("info = %d\n", info);
 
         double* F_m = malloc(m * m * sizeof(*F_m));
 
-        cblas_dsymm(CblasColMajor, CblasLeft, CblasUpper, m, m, 1, B_m1, m, Bm_11, m, 0, F_m, m);
-        free(Bm_11);
-        // if (verbose) {
-        //     printf("\nB_m1^-1 * B_m1 =\n");
-        //     print_matrix(m, m, F_m);
-        // }
-
+        if (verbose) {
+            printf("\nB_m1^-1\n");
+            print_matrix(m, m, B_m1);
+        }
 
         cblas_dsymm(CblasColMajor, CblasLeft, CblasUpper, m, m, 1, B_m1, m, B_m, m, 0, F_m, m);
-
-        // if (verbose) {
-        //     printf("\nE_m = \n");
-        //     print_matrix(m, m, B_m1);
-        //     printf("\nB_m = \n");
-        //     print_matrix(m, m, B_m);
-        //     printf("\nF_m = \n");
-        //     print_matrix(m, m, F_m);
-        //     printf("\n");
-        // }
 
         real_s = sorted_eigvals(m, F_m, m, s, &eigvals, &eigvecs);
         free(F_m);
@@ -221,53 +250,70 @@ prr_ret_type prr(int N, const double* A, int lda, const double* y0, int s, int m
 
 
         // étape 4 : calcul de l'erreur
-        
+
+        max_residual = DBL_MIN;
         double cur_residual;
         bool is_complex = false;
         double* conjugate_eigvec = malloc(N * sizeof(*conjugate_eigvec));
+        double* residuals = malloc(s * sizeof(*residuals));
+
         for (int i = 0; i < s; i++) {
             if (is_complex) {
                 cur_residual = compute_complex_residual(N, A, lda, eigvals[i], eigvals[real_s + i], &q[(i - 1) * N], conjugate_eigvec);
                 is_complex = false;
-            } else if (eigvals[real_s + 1] != 0.0) {
+            } else if (eigvals[real_s + i] != 0.0) {
                 const double* eigvec_im = &q[(i + 1) * N];
                 for (int j = 0; j < N; j++) {
-                    conjugate_eigvec[i] = -eigvec_im[i];
+                    conjugate_eigvec[j] = -eigvec_im[j];
                 }
-                cur_residual = compute_complex_residual(N, A, lda, eigvals[i], eigvals[real_s + i], &q[i * N], eigvec_im);               
+                cur_residual = compute_complex_residual(N, A, lda, eigvals[i], eigvals[real_s + i], &q[i * N], eigvec_im);
                 is_complex = true;
             } else {
                 cur_residual = compute_residual(N, A, lda, eigvals[i], &q[i * N]);
             }
-
+    
+            residuals[i] = cur_residual;
             if (cur_residual > max_residual) {
                 max_residual = cur_residual;
             }
         }
         free(conjugate_eigvec);
 
-        if (verbose) {
-            printf("%d, %g\n", it, max_residual);
-        }
+        // if (verbose) {
+        printf("%d, %g\n", it, max_residual);
+        // }
 
         if (max_residual < epsilon) {
+        free(residuals);
             break;
         }
 
         // redémarage
         // note : directly update &Vm[0 * N]
 
-        memset(Vm, 0, N);
+        // memset(Vm, 0, N * sizeof(*Vm));
+        // memset(Vm, 0, N);
+        
+        for (int i = 0; i < N; i++) {
+            Vm[i] *= 1 / max_residual;
+        }
+
         bool prev_is_complex = false;
         for (int i = 0; i < s; i++) {
-            double coef = rand() / (double)RAND_MAX;
             double* eigvec = prev_is_complex ? &q[(i - 1) * N] : &q[i * N];
+            // double coef = 0.01 * (rand() / (double)RAND_MAX);
+            // double coef = rand() / (double)RAND_MAX;
+            // double coef = 1 / sqrt(dot_product(N, eigvec, eigvec));
+            // double coef = 1. / s;
+            // double coef = max_residual;
+            double coef = 1 / residuals[i];
             for (int j = 0; j < N; j++) {
                 Vm[j] += coef * eigvec[j];
             }
 
             prev_is_complex = !prev_is_complex && eigvals[real_s + i] != 0;
         }
+        free(residuals);
     }
 
     // free(B_m);
@@ -321,9 +367,11 @@ int main(int argc, char* argv[]) {
     int n;
     double* matrix = read_matrix(matrix_file->filename[0], &n);
 
+    srand(0);
     double* y0 = malloc(n * sizeof(*y0));
     for (int i = 0; i < n; i++) {
         y0[i] = rand() / (double)RAND_MAX;
+        // y0[i] = 1;
     }
 
     prr_ret_type result = prr(n, matrix, n, y0, s->ival[0], m->ival[0], epsilon->dval[0], nb_iterations->ival[0], verbose->count > 0);
