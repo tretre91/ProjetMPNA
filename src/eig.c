@@ -33,28 +33,34 @@ int compare(const void* a, const void* b) {
 
     const double norm_lhs = complex_norm2(_sort_eigvals_re[lhs], _sort_eigvals_im[lhs]);
     const double norm_rhs = complex_norm2(_sort_eigvals_re[rhs], _sort_eigvals_im[rhs]);
+    
+    const double diff = norm_rhs - norm_lhs;
+    return fabs(diff) < 1e-15 ? lhs - rhs : (int)copysign(2, diff);
+    // if (norm_lhs > norm_rhs) {
+    //     return -1;
+    // } else if (norm_lhs < norm_rhs) {
+    //     return 1;
+    // } else {
+    //     return lhs - rhs;
+    // }
 
-    if (norm_lhs > norm_rhs) {
-        return -1;
-    } else if (norm_lhs < norm_rhs) {
-        return 1;
-    } else {
-        return lhs - rhs;
-    }
     // const long cmp = lround(norm_rhs - norm_lhs);
     //
     // return cmp != 0 ? cmp : lhs - rhs; // TODO: restrictive cast from long to int
 }
 
-int sorted_eigvals(int N, double* A, int lda, int limit, double** out_eigvals, double** out_eigvecs) {
-    double* eigvals_re = malloc(N * sizeof(*eigvals_re));
-    double* eigvals_im = malloc(N * sizeof(*eigvals_im));
-    double* eigvecs = malloc(N * N * sizeof(*eigvecs));
+int sorted_eigvals(int N, double* A, int lda, double* eigvals_re, double* eigvals_im, double* eigvecs) {
+    double eigvals_re_work[N];
+    double eigvals_im_work[N];
+    double eigvecs_work[N * N];
 
-    LAPACKE_dgeev(LAPACK_COL_MAJOR, 'N', 'V', N, A, lda, eigvals_re, eigvals_im, eigvecs, N, eigvecs, N);
+    int info = LAPACKE_dgeev(LAPACK_COL_MAJOR, 'N', 'V', N, A, lda, eigvals_re_work, eigvals_im_work, eigvecs_work, N, eigvecs_work, N);
+    if (info != 0) {
+        return info;
+    }
 
-    _sort_eigvals_re = eigvals_re;
-    _sort_eigvals_im = eigvals_im;
+    _sort_eigvals_re = eigvals_re_work;
+    _sort_eigvals_im = eigvals_im_work;
 
     int* indices = malloc(N * sizeof(int));
     for (int i = 0; i < N; i++) {
@@ -63,35 +69,14 @@ int sorted_eigvals(int N, double* A, int lda, int limit, double** out_eigvals, d
 
     qsort(indices, N, sizeof(int), compare);
 
-    // Si les valeurs propres limit-1 et limit forment une paire complexe conjuguée,
-    // on inclut la valeur et le vecteur propre d'indice limit
-    if (limit != N && eigvals_im[indices[limit - 1]] != 0.0) {
-        bool cut = true;
-        for (int i = limit - 2; i >= 0 && eigvals_im[indices[i]] != 0; i--) {
-            cut = !cut;
-        }
-        if (cut) {
-            limit += 1;
-        }
-    }
-
-    double* sorted_eigvals = malloc(2 * limit * sizeof(double));
-    double* sorted_eigvecs = malloc(N * limit * sizeof(double));
-
-    for (int i = 0; i < limit; i++) {
+    for (int i = 0; i < N; i++) {
         const int idx = indices[i];
-        sorted_eigvals[i] = eigvals_re[idx];
-        sorted_eigvals[limit + i] = eigvals_im[idx];
-        memcpy(sorted_eigvecs + i * N, eigvecs + idx * N, N * sizeof(*eigvecs));
+        eigvals_re[i] = eigvals_re_work[idx];
+        eigvals_im[i] = eigvals_im_work[idx];
+        memcpy(eigvecs + i * N, eigvecs_work + idx * N, N * sizeof(*eigvecs));
     }
 
-    free(eigvals_re);
-    free(eigvals_im);
-    free(eigvecs);
     free(indices);
 
-    *out_eigvals = sorted_eigvals;
-    *out_eigvecs = sorted_eigvecs;
-
-    return limit;
+    return 0;
 }

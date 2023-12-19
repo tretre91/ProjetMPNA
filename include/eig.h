@@ -7,12 +7,12 @@
  * @param N La dimension de la matrice
  * @param A Une matrice de taille NxN, stockée en column major. Cette matrice est modifiée après un appel à cette fonction.
  * @param lda Le nombre d'éléments entre 2 colonnes de `A`, doit être >= `N`.
- * @param limit Le nombre de valeurs/vecteurs propres à calculer.
- * @param out_eigvals En sortie, contient un pointeur vers un tableau contenant les parties réelles et imaginaires des valeurs propres triées.
- * @param out_eigvecs En sortie, contient un pointeur vers les vecteurs propres triés.
+ * @param eigvals_re Tableau de double de taille `N`. En sortie, contient les parties réelles des valeurs propres triées.
+ * @param eigvals_im Tableau de double de taille `N`. En sortie, contient les parties imaginaires des valeurs propres triées.
+ * @param out_eigvecs Tableau de doubles de taille `N*N`. En sortie, contient les vecteurs propres triés.
  *
- * @return Le nombre de valeurs/vecteurs propres calculées.
+ * @return int La valeur de retour de la fonction BLAS `dgeev`
  */
-int sorted_eigvals(int N, double* A, int lda, int limit, double** out_eigvals, double** out_eigvecs);
+int sorted_eigvals(int N, double* A, int lda, double* eigvals_re, double* eigvals_im, double* eigvecs);
 
 #endif // !PRR_EIG_H
