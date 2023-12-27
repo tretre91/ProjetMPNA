@@ -127,14 +127,14 @@ typedef struct prr_ret_type {
 } prr_ret_type;
 
 prr_ret_type prr(int N, const double* A, int lda, const double* y0, int s, int m, double epsilon, int max_iterations, int verbose) {
-    double Vm[N * (m + 1)];
-    double B_m1[m * m];
-    double B_m[m * m];
-    double C[2 * m];
+    double* Vm = malloc(N * (m + 1) * sizeof(*Vm));
+    double* B_m1 = malloc(m * m * sizeof(*B_m1));
+    double* B_m = malloc(m * m * sizeof(*B_m));
+    double* C = malloc(2 * m * sizeof(*C));
 
     double* eigvals_re = malloc(m * sizeof(*eigvals_re));
     double* eigvals_im = malloc(m * sizeof(*eigvals_im));
-    double eigvecs[m * m];
+    double* eigvecs = malloc(m * m * sizeof(*eigvecs));
     double* q = malloc((m + 1) * N * sizeof(*q));
 
     double max_residual = DBL_MIN;
@@ -279,6 +279,12 @@ prr_ret_type prr(int N, const double* A, int lda, const double* y0, int s, int m
             }
         }
     }
+
+    free(Vm);
+    free(B_m1);
+    free(B_m);
+    free(C);
+    free(eigvecs);
 
     prr_ret_type ret = {max_residual, eigvals_re, eigvals_im, q};
     return ret;

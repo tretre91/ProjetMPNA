@@ -33,7 +33,7 @@ int compare(const void* a, const void* b) {
 
     const double norm_lhs = complex_norm2(_sort_eigvals_re[lhs], _sort_eigvals_im[lhs]);
     const double norm_rhs = complex_norm2(_sort_eigvals_re[rhs], _sort_eigvals_im[rhs]);
-    
+
     const double diff = norm_rhs - norm_lhs;
     return fabs(diff) < 1e-15 ? lhs - rhs : (int)copysign(2, diff);
     // if (norm_lhs > norm_rhs) {
@@ -50,9 +50,9 @@ int compare(const void* a, const void* b) {
 }
 
 int sorted_eigvals(int N, double* A, int lda, double* eigvals_re, double* eigvals_im, double* eigvecs) {
-    double eigvals_re_work[N];
-    double eigvals_im_work[N];
-    double eigvecs_work[N * N];
+    double* eigvals_re_work = malloc(N * sizeof(*eigvals_re_work));
+    double* eigvals_im_work = malloc(N * sizeof(*eigvals_im_work));
+    double* eigvecs_work = malloc(N * N * sizeof(*eigvecs_work));
 
     int info = LAPACKE_dgeev(LAPACK_COL_MAJOR, 'N', 'V', N, A, lda, eigvals_re_work, eigvals_im_work, eigvecs_work, N, eigvecs_work, N);
     if (info != 0) {
@@ -77,6 +77,9 @@ int sorted_eigvals(int N, double* A, int lda, double* eigvals_re, double* eigval
     }
 
     free(indices);
+    free(eigvals_re_work);
+    free(eigvals_im_work);
+    free(eigvecs_work);
 
     return 0;
 }
