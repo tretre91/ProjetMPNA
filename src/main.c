@@ -73,7 +73,8 @@ double* read_matrix(const char* filename, int* n) {
 
     fscanf(file, " %d ", n);
 
-    double* matrix = malloc(*n * *n * sizeof(*matrix));
+    double* matrix;
+    posix_memalign ((void**)&matrix, 32, *n * *n * sizeof(*matrix));
 
     for (int i = 0; i < *n; i++) {
         for (int j = 0; j < *n; j++) {
@@ -114,12 +115,17 @@ void print_eigvals(int N, const double* eigvals_re, const double* eigvals_im) {
 }
 
 
-double dot_product(int N, const double* restrict x, const double* restrict y) {
+double old_dot_product(int N, const double* restrict x, const double* restrict y) {
     double res = 0;
     for (int i = 0; i < N; i++) {
         res += x[i] * y[i];
     }
     return res;
+}
+
+double dot_product(int N, const double* restrict x, const double* restrict y) {
+
+    return cblas_ddot(N, x, 1, y, 1);
 }
 
 
@@ -137,7 +143,7 @@ void omp_matvec_product(int M, int N, const double* restrict A, const int lda, c
     }
 }
 
-void matvec_product_col_major(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) {
+void old_matvec_product_col_major(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) {
     memset(y, 0, M * sizeof(*y));
     for (int i = 0; i < N; i++) {
         const double* column = &A[i * lda];
@@ -146,6 +152,11 @@ void matvec_product_col_major(int M, int N, const double* restrict A, const int 
             y[j] += val * column[j];
         }
     }
+}
+
+void matvec_product_col_major(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) {
+    cblas_dgemv(CblasColMajor, CblasNoTrans, M, N, 1, A, M, x, 1, 0, y, 1);
+    // cblas_dgemv(d, d, M, N, 1, A, N, X, 1, 0, y, 1);
 }
 
 
@@ -187,15 +198,31 @@ typedef struct prr_ret_type {
 } prr_ret_type;
 
 prr_ret_type prr(int N, const double* restrict A, int lda, const double* restrict y0, int s, int m, double epsilon, int max_iterations, int verbose) {
-    double Vm[N * (m + 1)];
-    double B_m1[m * m];
-    double B_m[m * m];
-    double C[2 * m];
+    // double Vm[N * (m + 1)];
+    // double B_m1[m * m];
+    // double B_m[m * m];
+    // double C[2 * m];
+    double * Vm;
+    double * B_m1;
+    double * B_m;
+    double * C;
 
-    double* eigvals_re = malloc(m * sizeof(*eigvals_re));
-    double* eigvals_im = malloc(m * sizeof(*eigvals_im));
-    double eigvecs[m * m];
-    double* q = malloc((m + 1) * N * sizeof(*q));
+    posix_memalign ((void**)&Vm, 32, N * (m + 1) * sizeof(*Vm) );
+    posix_memalign ((void**)&B_m1, 32, m * m * sizeof(*B_m1) );
+    posix_memalign ((void**)&B_m, 32, m * m * sizeof(*B_m) );
+    posix_memalign ((void**)&C, 32, 2 * m * sizeof(*C) );
+
+    double* eigvals_re;
+    posix_memalign ((void**)&eigvals_re, 32, m * sizeof(*eigvals_re) );
+
+    double* eigvals_im;
+    posix_memalign ((void**)&eigvals_im, 32, m * sizeof(*eigvals_im) );
+
+    double * eigvecs;
+    posix_memalign ((void**)&eigvecs, 32, m * m * sizeof(*eigvecs) );
+
+    double* q;
+    posix_memalign ((void**)&q, 32, (m + 1) * N * sizeof(*q) );
 
     double max_residual = DBL_MIN;
 
@@ -248,7 +275,9 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
             {
                 // étape 2 : résolution dans le sous-espace
 
-                int32_t* ipiv = malloc(m * sizeof(*ipiv));
+                int32_t* ipiv;
+                posix_memalign ((void**)&ipiv, 32, m * sizeof(*ipiv));
+
                 int info = LAPACKE_dsytrf(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
                 if (info != 0) {
                     FAILED_OP = LU;
@@ -263,7 +292,8 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                 }
                 free(ipiv);
 
-                double* F_m = malloc(m * m * sizeof(*F_m));
+                double* F_m;
+                posix_memalign ((void**)&F_m, 32, m * m * sizeof(*F_m));
 
                 cblas_dsymm(CblasColMajor, CblasLeft, CblasUpper, m, m, 1, B_m1, m, B_m, m, 0, F_m, m);
                 if (verbose ) {
@@ -296,7 +326,7 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
             {
                 max_residual = DBL_MIN;
                 is_complex = false;
-                conjugate_eigvec = malloc(N * sizeof(*conjugate_eigvec));
+                posix_memalign ((void**)&conjugate_eigvec, 32, N * sizeof(conjugate_eigvec));
             }
 // #pragma omp single
 //             {
@@ -395,6 +425,13 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
     } // end pragma parallel
 
     prr_ret_type ret = {max_residual, eigvals_re, eigvals_im, q};
+    free(eigvecs);
+    free( Vm );
+    free( B_m1 );
+    free( B_m );
+    free( C );
+
+
     return ret;
 }
 
@@ -451,7 +488,9 @@ int main(int argc, char* argv[]) {
     load_test_matrix_B(n, matrix);
 
     srand(0);
-    double* y0 = malloc(n * sizeof(*y0));
+    double* y0;
+    posix_memalign ((void**)&y0, 32, n  * sizeof(*y0));
+
     for (int i = 0; i < n; i++) {
         y0[i] = rand() / (double)RAND_MAX;
     }
