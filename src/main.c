@@ -114,7 +114,7 @@ void print_eigvals(int N, const double* eigvals_re, const double* eigvals_im) {
 }
 
 
-double dot_product(int N, const double* x, const double* y) {
+double dot_product(int N, const double* restrict x, const double* restrict y) {
     double res = 0;
     for (int i = 0; i < N; i++) {
         res += x[i] * y[i];
@@ -124,20 +124,20 @@ double dot_product(int N, const double* x, const double* y) {
 
 
 
-void matvec_product(int M, int N, const double* A, const int lda, const double* x, double* y) {
+void matvec_product(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* y) {
     for (int i = 0; i < M; i++) {
         y[i] = dot_product(N, &A[i * lda], x);
     }
 }
 
-void omp_matvec_product(int M, int N, const double* A, const int lda, const double* x, double* y) {
+void omp_matvec_product(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) {
 #pragma omp for
     for (int i = 0; i < M; i++) {
         y[i] = dot_product(N, &A[i * lda], x);
     }
 }
 
-void matvec_product_col_major(int M, int N, const double* A, const int lda, const double* x, double* y) {
+void matvec_product_col_major(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) {
     memset(y, 0, M * sizeof(*y));
     for (int i = 0; i < N; i++) {
         const double* column = &A[i * lda];
@@ -150,7 +150,7 @@ void matvec_product_col_major(int M, int N, const double* A, const int lda, cons
 
 
 double residual ;
-double compute_residual(int N, const double* A, int lda, double eigval, const double* eigvec) {
+double compute_residual(int N, const double*  restrict A, int lda, double eigval, const double* restrict eigvec) {
 #pragma omp single 
     residual = 0.f;
 
@@ -164,7 +164,7 @@ double compute_residual(int N, const double* A, int lda, double eigval, const do
 }
 
 
-double compute_complex_residual(int N, const double* A, int lda, double eigval_re, double eigval_im, const double* eigvec_re, const double* eigvec_im) {
+double compute_complex_residual(int N, const double* restrict A, int lda, double eigval_re, double eigval_im, const double* restrict eigvec_re, const double* restrict eigvec_im) {
 #pragma omp single 
     residual = 0.f;
 
@@ -186,7 +186,7 @@ typedef struct prr_ret_type {
     double* eigvecs;
 } prr_ret_type;
 
-prr_ret_type prr(int N, const double* A, int lda, const double* y0, int s, int m, double epsilon, int max_iterations, int verbose) {
+prr_ret_type prr(int N, const double* restrict A, int lda, const double* restrict y0, int s, int m, double epsilon, int max_iterations, int verbose) {
     double Vm[N * (m + 1)];
     double B_m1[m * m];
     double B_m[m * m];
