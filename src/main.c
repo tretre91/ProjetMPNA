@@ -114,19 +114,20 @@ void print_eigvals(int N, const double* eigvals_re, const double* eigvals_im) {
     }
 }
 
+#ifdef USE_CBLAS
+double dot_product(int N, const double* restrict x, const double* restrict y) {
 
-double old_dot_product(int N, const double* restrict x, const double* restrict y) {
+    return cblas_ddot(N, x, 1, y, 1);
+}
+#else
+double dot_product(int N, const double* restrict x, const double* restrict y) {
     double res = 0;
     for (int i = 0; i < N; i++) {
         res += x[i] * y[i];
     }
     return res;
 }
-
-double dot_product(int N, const double* restrict x, const double* restrict y) {
-
-    return cblas_ddot(N, x, 1, y, 1);
-}
+#endif
 
 
 
@@ -143,7 +144,16 @@ void omp_matvec_product(int M, int N, const double* restrict A, const int lda, c
     }
 }
 
-void old_matvec_product_col_major(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) {
+
+
+#ifdef USE_CBLAS
+void matvec_product_col_major(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) {
+    cblas_dgemv(CblasColMajor, CblasNoTrans, M, N, 1, A, M, x, 1, 0, y, 1);
+    // cblas_dgemv(d, d, M, N, 1, A, N, X, 1, 0, y, 1);
+}
+#else
+
+void matvec_product_col_major(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) {
     memset(y, 0, M * sizeof(*y));
     for (int i = 0; i < N; i++) {
         const double* column = &A[i * lda];
@@ -153,12 +163,7 @@ void old_matvec_product_col_major(int M, int N, const double* restrict A, const 
         }
     }
 }
-
-void matvec_product_col_major(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) {
-    cblas_dgemv(CblasColMajor, CblasNoTrans, M, N, 1, A, M, x, 1, 0, y, 1);
-    // cblas_dgemv(d, d, M, N, 1, A, N, X, 1, 0, y, 1);
-}
-
+#endif
 
 double residual ;
 double compute_residual(int N, const double*  restrict A, int lda, double eigval, const double* restrict eigvec) {
@@ -477,15 +482,15 @@ int main(int argc, char* argv[]) {
     }
    
     // orig :
-    // int n;
-    // double* matrix = read_matrix(matrix_file->filename[0], &n);
-    // print_matrix(n, n, matrix);
+    int n;
+    double* matrix = read_matrix(matrix_file->filename[0], &n);
+    print_matrix(n, n, matrix);
 
     /// for  benchmark :
     
-    int n = 1000;
-    double* matrix = malloc(n * n * sizeof(*matrix));
-    load_test_matrix_B(n, matrix);
+    // int n = 1000;
+    // double* matrix = malloc(n * n * sizeof(*matrix));
+    // load_test_matrix_B(n, matrix);
 
     srand(0);
     double* y0;
