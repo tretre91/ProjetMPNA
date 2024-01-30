@@ -22,15 +22,7 @@ enum failed_operation {
     EIG
 } FAILED_OP;
 
-void load_mtx(double * m, int MATRIX_SIZE, char * filename ) {
-    FILE *file = fopen(filename, "r");
-
-
-    if (file == NULL) {
-        perror("Error opening file");
-        return;
-    }
-
+void load_mtx(double * m, int MATRIX_SIZE, FILE* file) {
     int row, col;
     double value;
 
@@ -49,26 +41,24 @@ void load_mtx(double * m, int MATRIX_SIZE, char * filename ) {
             fprintf(stderr, "Invalid row or column index in the file.\n");
         }
     }
-
-    fclose(file);
 }
 
 
 int load_test_matrix_A(size_t n, double * A ){
-    for ( int i = 0; i < n; i ++) {
-        for ( int j = 0; j < n; j ++) {
+    for ( size_t i = 0; i < n; i ++) {
+        for ( size_t j = 0; j < n; j ++) {
             A[ i * n + j ] = 0;
         }
     }
 
-    for ( int j = 0; j < n; j ++) {
-        for ( int i = 0; i < j; i ++) {
+    for ( size_t j = 0; j < n; j ++) {
+        for ( size_t i = 0; i < j; i ++) {
             A[ i * n + j] = n + 1 - j;
         }
     }
     
-    for ( int j = 0; j < n-1; j ++) {
-        for ( int i = j+1; i < n; i ++) {
+    for ( size_t j = 0; j < n-1; j ++) {
+        for ( size_t i = j+1; i < n; i ++) {
             A[ i * n + j] = n + 1 - i;
         }
     }
@@ -77,16 +67,16 @@ int load_test_matrix_A(size_t n, double * A ){
 
 int load_test_matrix_B(size_t n, double * A ){
 
-    for ( int i = 0; i < n; i ++) {
-        for ( int j = 0; j < n; j ++) {
+    for ( size_t i = 0; i < n; i ++) {
+        for ( size_t j = 0; j < n; j ++) {
             A[ i * n + j ] = 0;
         }
     }
     double a = 3;
     double b = 6;
 
-    for ( int i = 1; i < n-1; i ++) {
-        for ( int j = 1; j < n-1; j ++) {
+    for ( size_t i = 1; i < n-1; i ++) {
+        for ( size_t j = 1; j < n-1; j ++) {
             A[ i * n + i - 1] = b;
             A[ i * n + i    ] = a;
             A[ i * n + i + 1] = b;
@@ -103,14 +93,24 @@ int load_test_matrix_B(size_t n, double * A ){
 double* read_matrix(const char* filename, int* n) {
     FILE* file = fopen(filename, "r");
 
+    if (file == NULL) {
+        perror("Error opening file");
+        return NULL;
+    }
+
     fscanf(file, " %d ", n);
 
     double* matrix;
     posix_memalign ((void**)&matrix, 32, *n * *n * sizeof(*matrix));
 
-    for (int i = 0; i < *n; i++) {
-        for (int j = 0; j < *n; j++) {
-            fscanf(file, " %lf ", &matrix[i * *n + j]);
+    int len = strlen(filename);
+    if (len > 4 && strcmp(&filename[len - 4], ".mtx") == 0) {
+        load_mtx(matrix, *n, file);
+    } else {
+        for (int i = 0; i < *n; i++) {
+            for (int j = 0; j < *n; j++) {
+                fscanf(file, " %lf ", &matrix[i * *n + j]);
+            }
         }
     }
 
@@ -417,9 +417,7 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
 
                 free(conjugate_eigvec);
 
-                if (verbose) {
-                    printf("%d, %g\n", it, max_residual);
-                }
+                printf("%d %g\n", it, max_residual);
 
                 // cancel break for now
                 // if (max_residual < epsilon && false) {
@@ -519,9 +517,8 @@ int main(int argc, char* argv[]) {
     }
    
     // orig : -------------------
-    // int n;
-    // double* matrix = read_matrix(matrix_file->filename[0], &n);
-    // print_matrix(n, n, matrix);
+    int n;
+    double* matrix = read_matrix(matrix_file->filename[0], &n);
 
 
     /// for  benchmark : -------------------
@@ -531,9 +528,9 @@ int main(int argc, char* argv[]) {
     // load_test_matrix_B(n, matrix);
 
     //-------------------------------
-    int n = 1138;
-    double* matrix = malloc(n * n * sizeof(*matrix));
-    load_mtx( matrix, n, "../data/1138_bus.mtx" );
+    // int n = 1138;
+    // double* matrix = malloc(n * n * sizeof(*matrix));
+    // load_mtx( matrix, n, "data/1138_bus.mtx" );
     
     // int n = 9540;
     // double* matrix = malloc(n * n * sizeof(*matrix));
