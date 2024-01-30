@@ -1,12 +1,13 @@
+#include <assert.h>
 #include <complex.h>
 #include <float.h>
 #include <math.h>
+#include <omp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 // #define LAPACK_DISABLE_NAN_CHECK
 #include <cblas.h>
@@ -15,6 +16,8 @@
 #include "argtable3.h"
 #include "eig.h"
 
+#define ALIGNEMENT 8
+
 
 enum failed_operation {
     LU,
@@ -22,48 +25,55 @@ enum failed_operation {
     EIG
 } FAILED_OP;
 
-int load_test_matrix_A(size_t n, double * A ){
-    for ( int i = 0; i < n; i ++) {
-        for ( int j = 0; j < n; j ++) {
-            A[ i * n + j ] = 0;
+int load_test_matrix_A(size_t n, double* A) {
+    for (size_t i = 0; i < n; i++) {
+        for (size_t j = 0; j < n; j++) {
+            A[i * n + j] = 0;
         }
     }
 
-    for ( int j = 0; j < n; j ++) {
-        for ( int i = 0; i < j; i ++) {
-            A[ i * n + j] = n + 1 - j;
+    for (size_t j = 0; j < n; j++) {
+        for (size_t i = 0; i < j; i++) {
+            A[i * n + j] = n + 1 - j;
         }
     }
-    
-    for ( int j = 0; j < n-1; j ++) {
-        for ( int i = j+1; i < n; i ++) {
-            A[ i * n + j] = n + 1 - i;
+
+    for (size_t j = 0; j < n - 1; j++) {
+        for (size_t i = j + 1; i < n; i++) {
+            A[i * n + j] = n + 1 - i;
+        }
+    }
+
+    for (size_t i = 0; i < n; i++) {
+        for (size_t j = 0; j < n; j++) {
+            assert(A[i * n + j] == A[j * n + i]);
         }
     }
     return 0;
 }
 
-int load_test_matrix_B(size_t n, double * A ){
-
-    for ( int i = 0; i < n; i ++) {
-        for ( int j = 0; j < n; j ++) {
-            A[ i * n + j ] = 0;
+int load_test_matrix_B(size_t n, double* A) {
+    for (size_t i = 0; i < n; i++) {
+        for (size_t j = 0; j < n; j++) {
+            A[i * n + j] = 0;
         }
     }
     double a = 3;
     double b = 6;
 
-    for ( int i = 1; i < n-1; i ++) {
-        for ( int j = 1; j < n-1; j ++) {
-            A[ i * n + i - 1] = b;
-            A[ i * n + i    ] = a;
-            A[ i * n + i + 1] = b;
+    for (size_t i = 1; i < n - 1; i++) {
+        for (size_t j = 1; j < n - 1; j++) {
+            A[i * n + i - 1] = b;
+            A[i * n + i] = a;
+            A[i * n + i + 1] = b;
         }
     }
-    
-    A[0] = a; A[1] = b;
-    A[n*n -2] = b; A[n*n-1] = a;
-    
+
+    A[0] = a;
+    A[1] = b;
+    A[n * n - 2] = b;
+    A[n * n - 1] = a;
+
     return 0;
 }
 
@@ -73,8 +83,7 @@ double* read_matrix(const char* filename, int* n) {
 
     fscanf(file, " %d ", n);
 
-    double* matrix;
-    posix_memalign ((void**)&matrix, 32, *n * *n * sizeof(*matrix));
+    double* matrix = malloc(*n * *n * sizeof(*matrix));
 
     for (int i = 0; i < *n; i++) {
         for (int j = 0; j < *n; j++) {
@@ -116,12 +125,12 @@ void print_eigvals(int N, const double* eigvals_re, const double* eigvals_im) {
 
 #ifdef USE_CBLAS
 double dot_product(int N, const double* restrict x, const double* restrict y) {
-
     return cblas_ddot(N, x, 1, y, 1);
 }
 #else
 double dot_product(int N, const double* restrict x, const double* restrict y) {
     double res = 0;
+#pragma omp simd
     for (int i = 0; i < N; i++) {
         res += x[i] * y[i];
     }
@@ -165,12 +174,12 @@ void matvec_product_col_major(int M, int N, const double* restrict A, const int 
 }
 #endif
 
-double residual ;
-double compute_residual(int N, const double*  restrict A, int lda, double eigval, const double* restrict eigvec) {
-#pragma omp single 
-    residual = 0.f;
-
-#pragma omp for reduction(+:residual)
+double residual;
+double compute_residual(int N, const double* restrict A, int lda, double eigval, const double* restrict eigvec) {
+    double residual = 0.f;
+    
+    const int level = omp_get_active_level();
+    #pragma omp parallel for reduction(+ : residual) if(level < 1)
     for (int i = 0; i < N; i++) {
         double x = dot_product(N, &A[i * lda], eigvec) - eigval * eigvec[i];
         residual += x * x;
@@ -180,14 +189,16 @@ double compute_residual(int N, const double*  restrict A, int lda, double eigval
 }
 
 
-double compute_complex_residual(int N, const double* restrict A, int lda, double eigval_re, double eigval_im, const double* restrict eigvec_re, const double* restrict eigvec_im) {
-#pragma omp single 
-    residual = 0.f;
+double compute_complex_residual(
+  int N, const double* restrict A, int lda, double eigval_re, double eigval_im, const double* restrict eigvec_re, const double* restrict eigvec_im, bool conjugate) {
+    double residual = 0.0;
+    double factor = conjugate ? -1 : 1;
 
-#pragma omp for reduction(+:residual)
+    const int level = omp_get_active_level();
+    #pragma omp parallel for reduction(+ : residual) if(level < 1)
     for (int i = 0; i < N; i++) {
         double x_re = dot_product(N, &A[i * lda], eigvec_re) - (eigval_re * eigvec_re[i] - eigval_im * eigvec_im[i]);
-        double x_im = dot_product(N, &A[i * lda], eigvec_im) - (eigval_re * eigvec_im[i] + eigval_im * eigvec_re[i]);
+        double x_im = factor * dot_product(N, &A[i * lda], eigvec_im) - (eigval_re * factor * eigvec_im[i] + eigval_im * eigvec_re[i]);
 
         residual += x_re * x_re + x_im * x_im;
     }
@@ -202,239 +213,222 @@ typedef struct prr_ret_type {
     double* eigvecs;
 } prr_ret_type;
 
-prr_ret_type prr(int N, const double* restrict A, int lda, const double* restrict y0, int s, int m, double epsilon, int max_iterations, int verbose) {
-    // double Vm[N * (m + 1)];
-    // double B_m1[m * m];
-    // double B_m[m * m];
-    // double C[2 * m];
-    double * Vm;
-    double * B_m1;
-    double * B_m;
-    double * C;
 
-    posix_memalign ((void**)&Vm, 32, N * (m + 1) * sizeof(*Vm) );
-    posix_memalign ((void**)&B_m1, 32, m * m * sizeof(*B_m1) );
-    posix_memalign ((void**)&B_m, 32, m * m * sizeof(*B_m) );
-    posix_memalign ((void**)&C, 32, 2 * m * sizeof(*C) );
 
-    double* eigvals_re;
-    posix_memalign ((void**)&eigvals_re, 32, m * sizeof(*eigvals_re) );
+prr_ret_type prr(int N, const double* restrict A, int lda, const double* restrict y0, int s, const int m, const double epsilon, int max_iterations, int verbose) {
+    double* Vm = malloc(N * (m + 1) * sizeof(*Vm));
+    double* B_m1 = malloc(m * m * sizeof(*B_m1));
+    double* B_m = malloc(m * m * sizeof(*B_m));
+    double* C = malloc(2 * m * sizeof(*C));
 
-    double* eigvals_im;
-    posix_memalign ((void**)&eigvals_im, 32, m * sizeof(*eigvals_im) );
+    double* F_m = malloc(m * m * sizeof(*F_m));
 
-    double * eigvecs;
-    posix_memalign ((void**)&eigvecs, 32, m * m * sizeof(*eigvecs) );
+    int32_t* ipiv = malloc(m * sizeof(*ipiv));
+    double* eigvals_re = malloc(m * sizeof(*eigvals_re));
+    double* eigvals_im = malloc(m * sizeof(*eigvals_im));
+    double* eigvecs = malloc(m * m * sizeof(*eigvecs));
 
-    double* q;
-    posix_memalign ((void**)&q, 32, (m + 1) * N * sizeof(*q) );
+    double* q = malloc((m + 1) * N * sizeof(*q));
 
     double max_residual = DBL_MIN;
 
-    double* conjugate_eigvec;
-    double cur_residual;
-    bool is_complex;
+    double* conjugate_eigvec = malloc(N * sizeof(*conjugate_eigvec));
 
 
     memcpy(Vm, y0, N * sizeof(double));
     const double norm_y0 = 1 / sqrt(dot_product(N, Vm, Vm));
-#pragma omp parallel
+
+    #pragma omp parallel
     {
 
-#pragma omp for
-        for (int i = 0; i < N; i++) {
-            Vm[i] *= norm_y0;
+    #pragma omp for
+    for (int i = 0; i < N; i++) {
+        Vm[i] *= norm_y0;
+    }
+
+    for (int it = 0; it < max_iterations; it++) {
+        // étape 1 : constituer les matrices B_m-1, B_m et Vm
+
+        for (int i = 1; i < m + 1; i++) {
+            omp_matvec_product(N, N, A, lda, &Vm[(i - 1) * N], &Vm[i * N]);
+            // const double norm = 1 / sqrt(dot_product(N, &Vmtmp[i * N], &Vmtmp[i * N]));
+            // for (int j = 0; j < N; j++) {
+            //     Vmtmp[i * N + j] *= norm;
+            // }
         }
 
-        for (int it = 0; it < max_iterations; it++) {
-            // étape 1 : constituer les matrices B_m-1, B_m et Vm
+        #pragma omp for
+        for (int i = 0; i < m; i++) {
+            C[2 * i] = dot_product(N, &Vm[i * N], &Vm[i * N]);
+            C[2 * i + 1] = dot_product(N, &Vm[i * N], &Vm[(i + 1) * N]);
+        }
 
-            for (int i = 1; i < m + 1; i++) {
-                omp_matvec_product(N, N, A, lda, &Vm[(i - 1) * N], &Vm[i * N]);
-                // const double norm = 1 / sqrt(dot_product(N, &Vmtmp[i * N], &Vmtmp[i * N]));
-                // for (int j = 0; j < N; j++) {
-                //     Vmtmp[i * N + j] *= norm;
-                // }
+        #pragma omp for
+        for (int i = 0; i < m; i++) {
+            B_m1[i * m + i] = C[i + i];
+            B_m[i * m + i] = C[i + i + 1];
+            for (int j = i + 1; j < m; j++) {
+                B_m1[i * m + j] = C[i + j];
+                B_m1[j * m + i] = B_m1[i * m + j];
+
+                B_m[i * m + j] = C[i + j + 1];
+                B_m[j * m + i] = B_m[i * m + j];
+            }
+        }
+
+        #pragma omp single
+        {
+            // étape 2 : résolution dans le sous-espace
+
+            int info = LAPACKE_dsytrf(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
+            if (info != 0) {
+                FAILED_OP = LU;
+                fprintf(stderr, "LU factorization failed with info = %d\n", info);
+                // TODO: return error
+            }
+            info = LAPACKE_dsytri(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
+            if (info != 0) {
+                FAILED_OP = INV;
+                fprintf(stderr, "Matrix inverse failed with info = %d\n", info);
+                // TODO: return error
             }
 
-#pragma omp for
-            for (int i = 0; i < m; i++) {
-                C[2 * i] = dot_product(N, &Vm[i * N], &Vm[i * N]);
-                C[2 * i + 1] = dot_product(N, &Vm[i * N], &Vm[(i + 1) * N]);
+            cblas_dsymm(CblasColMajor, CblasLeft, CblasUpper, m, m, 1, B_m1, m, B_m, m, 0, F_m, m);
+            if (verbose) {
+                printf("\nFm =\n");
+                print_matrix(m, m, F_m);
             }
 
-#pragma omp for
-            for (int i = 0; i < m; i++) {
-                B_m1[i * m + i] = C[i + i];
-                B_m[i * m + i] = C[i + i + 1];
-                for (int j = i + 1; j < m; j++) {
-                    B_m1[i * m + j] = C[i + j];
-                    B_m1[j * m + i] = B_m1[i * m + j];
+            // could be par
+            info = sorted_eigvals(m, F_m, m, eigvals_re, eigvals_im, eigvecs);
 
-                    B_m[i * m + j] = C[i + j + 1];
-                    B_m[j * m + i] = B_m[i * m + j];
-                }
+            if (info != 0) {
+                FAILED_OP = EIG;
+                fprintf(stderr, "Eigenvalue compuatation failed with info = %d\n", info);
+                // TODO: return error
             }
+        }
 
-#pragma omp single
+
+        // étape 3 : retour dans l'espace de départ
+        #pragma omp for
+        for (int i = 0; i < m; i++) {
+            matvec_product_col_major(N, m, Vm, N, eigvecs + i * m, q + i * N);
+        }
+
+
+
+        // étape 4 : calcul de l'erreur
+        // #pragma omp single
+        //             {
+
+        #pragma omp single
+        {
+            max_residual = DBL_MIN;
+            bool is_complex = false;
+
+            #pragma omp taskgroup task_reduction(max:max_residual)
             {
-                // étape 2 : résolution dans le sous-espace
+            for (int i = 0; i < s; i++) {
+                if (is_complex) {
+                    is_complex = false;
 
-                int32_t* ipiv;
-                posix_memalign ((void**)&ipiv, 32, m * sizeof(*ipiv));
-
-                int info = LAPACKE_dsytrf(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
-                if (info != 0) {
-                    FAILED_OP = LU;
-                    fprintf(stderr, "LU factorization failed with info = %d\n", info);
-                    // TODO: return error
-                }
-                info = LAPACKE_dsytri(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
-                if (info != 0) {
-                    FAILED_OP = INV;
-                    fprintf(stderr, "Matrix inverse failed with info = %d\n", info);
-                    // TODO: return error
-                }
-                free(ipiv);
-
-                double* F_m;
-                posix_memalign ((void**)&F_m, 32, m * m * sizeof(*F_m));
-
-                cblas_dsymm(CblasColMajor, CblasLeft, CblasUpper, m, m, 1, B_m1, m, B_m, m, 0, F_m, m);
-                if (verbose ) {
-                    printf("\nFm =\n");
-                    print_matrix(m, m, F_m);
-                }
-                
-                // could be par
-                info = sorted_eigvals(m, F_m, m, eigvals_re, eigvals_im, eigvecs);
-                free(F_m);
-
-                if (info != 0) {
-                    FAILED_OP = EIG;
-                    fprintf(stderr, "Eigenvalue compuatation failed with info = %d\n", info);
-                    // TODO: return error
-                }
-            }
-
-
-                // étape 3 : retour dans l'espace de départ
-#pragma omp for
-            for (int i = 0; i < m; i++) {
-                matvec_product_col_major(N, m, Vm, N, eigvecs + i * m, q + i * N);
-            }
-
-
-
-// étape 4 : calcul de l'erreur
-#pragma omp single
-            {
-                max_residual = DBL_MIN;
-                is_complex = false;
-                posix_memalign ((void**)&conjugate_eigvec, 32, N * sizeof(conjugate_eigvec));
-            }
-// #pragma omp single
-//             {
-
-                for (int i = 0; i < s; i++) {
-                    if (is_complex) {
-#pragma omp barrier // je sais pas pourquoi il faut une omp barrier mais bon ca fonctionne avec
-
-                        double local_residual = compute_complex_residual(N, A, lda, eigvals_re[i], eigvals_im[i], &q[(i - 1) * N], conjugate_eigvec);
-#pragma omp single
-                        {
-                            cur_residual = local_residual;
-                            is_complex = false;
-                        }
-
-                    } else if (eigvals_im[i] != 0.0) {
-
-                        const double* eigvec_im = &q[(i + 1) * N];
-#pragma omp single
-                        {
-                            for (int j = 0; j < N; j++) {
-                                conjugate_eigvec[j] = -eigvec_im[j];
-                            }
-                        }
-                        double local_residual = compute_complex_residual(N, A, lda, eigvals_re[i], eigvals_im[i], &q[i * N], eigvec_im);
-#pragma omp single
-                        {
-                            cur_residual = local_residual;
-                            is_complex = true;
-                        }
-
-                    } else {
-                         double local_residual = compute_residual(N, A, lda, eigvals_re[i], &q[i * N]);
-#pragma omp single
-                        {
-                            cur_residual = local_residual;
+                    #pragma omp task in_reduction(max:max_residual) firstprivate(i)
+                    {
+                        const double residual = compute_complex_residual(N, A, lda, eigvals_re[i], eigvals_im[i], &q[(i - 1) * N], &q[i * N], true);
+                        if (residual > max_residual) {
+                            max_residual = residual;
                         }
                     }
+                } else if (eigvals_im[i] != 0.0) {
+                    is_complex = true;
 
-                }
-#pragma omp single
-            {
-                    if (cur_residual > max_residual) {
-                        max_residual = cur_residual;
+                    #pragma omp task in_reduction(max:max_residual) firstprivate(i)
+                    {
+                        const double residual = compute_complex_residual(N, A, lda, eigvals_re[i], eigvals_im[i], &q[i * N], &q[(i + 1) * N], false);
+                        if (residual > max_residual) {
+                            max_residual = residual;
+                        }
                     }
-
-                free(conjugate_eigvec);
-
-                if (verbose) {
-                    printf("%d, %g\n", it, max_residual);
+                } else {
+                    #pragma omp task in_reduction(max:max_residual) firstprivate(i)
+                    {
+                        const double residual = compute_residual(N, A, lda, eigvals_re[i], &q[i * N]);
+                        if (residual > max_residual) {
+                            max_residual = residual;
+                        }
+                    }
                 }
-
-                // cancel break for now
-                // if (max_residual < epsilon && false) {
-                //     break;
-                // }
-
-                // redémarage
-                // note : directly update &Vm[0 * N]
-
-                memset(Vm, 0, N * sizeof(*Vm));
             }
-#pragma omp single
-            {
+            } // END taskgroup
 
-                bool prev_is_complex = false;
-                for (int i = 0; i < s; i++) {
-                    double coef = rand() / (double)RAND_MAX;
-                    if (prev_is_complex) {
+
+            // if (verbose) {
+                printf("%d %g\n", it, max_residual);
+            // }
+
+            // cancel break for now
+            // if (max_residual < epsilon && false) {
+            //     break;
+            // }
+
+            // redémarage
+            // note : directly update &Vm[0 * N]
+
+            memset(Vm, 0, N * sizeof(*Vm));
+
+            bool prev_is_complex = false;
+            #pragma omp taskgroup task_reduction(+:Vm[0:N])
+            {
+            for (int i = 0; i < s; i++) {
+                double coef = rand() / (double)RAND_MAX;
+                if (prev_is_complex) {
+                    #pragma omp task firstprivate(i, coef) in_reduction(+ : Vm[0:N])
+                    {
                         double* eigvec_re = &q[i * N];
                         double* eigvec_im = &q[(i + 1) * N];
                         for (int j = 0; j < N; j++) {
                             Vm[j] += coef * cabs(eigvec_re[j] + I * eigvec_im[j]);
                         }
-                        prev_is_complex = false;
-                    } else if (eigvals_im[i] != 0) {
+                    }
+                    prev_is_complex = false;
+                } else if (eigvals_im[i] != 0) {
+                    #pragma omp task firstprivate(i, coef) in_reduction(+ : Vm[0:N])
+                    {
                         double* eigvec_re = &q[i * N];
                         double* eigvec_im = &q[(i + 1) * N];
                         for (int j = 0; j < N; j++) {
                             Vm[j] += coef * cabs(eigvec_re[j] + I * eigvec_im[j]);
                         }
-                        prev_is_complex = true;
-                    } else {
+                    }
+                    prev_is_complex = true;
+                } else {
+                    #pragma omp task firstprivate(i, coef) in_reduction(+ : Vm[0:N])
+                    {
                         double* eigvec = &q[i * N];
                         for (int j = 0; j < N; j++) {
                             Vm[j] += coef * fabs(eigvec[j]);
                         }
                     }
-                } //end restart
+                }
+            }
+            }  // end restart
 
+        }  // end single
 
-            } // end single
-// #pragma omp barrier
+    }  // end for
 
-        } // end for
-    } // end pragma parallel
+    }  // end pragma parallel
 
     prr_ret_type ret = {max_residual, eigvals_re, eigvals_im, q};
     free(eigvecs);
-    free( Vm );
-    free( B_m1 );
-    free( B_m );
-    free( C );
+    free(ipiv);
+    free(Vm);
+    free(B_m1);
+    free(B_m);
+    free(C);
+    free(F_m);
+    free(conjugate_eigvec);
 
 
     return ret;
@@ -480,21 +474,21 @@ int main(int argc, char* argv[]) {
         arg_freetable(argtable, nb_opts);
         return 1;
     }
-   
+
     // orig :
-    int n;
-    double* matrix = read_matrix(matrix_file->filename[0], &n);
-    print_matrix(n, n, matrix);
+    // int n;
+    // double* matrix = read_matrix(matrix_file->filename[0], &n);
+    // print_matrix(n, n, matrix);
 
     /// for  benchmark :
-    
-    // int n = 1000;
-    // double* matrix = malloc(n * n * sizeof(*matrix));
-    // load_test_matrix_B(n, matrix);
+
+    int n = 1000;
+    double* matrix = malloc(n * n * sizeof(*matrix));
+    load_test_matrix_A(n, matrix);
 
     srand(0);
-    double* y0;
-    posix_memalign ((void**)&y0, 32, n  * sizeof(*y0));
+    // double* y0;
+    double* y0 = malloc(n * sizeof(*y0));
 
     for (int i = 0; i < n; i++) {
         y0[i] = rand() / (double)RAND_MAX;
