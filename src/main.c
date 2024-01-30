@@ -130,19 +130,19 @@ void print_matrix_file(FILE* file, int nb_rows, int nb_columns, double* matrix) 
     }
 }
 
-void print_matrix(int nb_rows, int nb_columns, double* matrix) {
+void print_matrix(FILE* file, int nb_rows, int nb_columns, double* matrix) {
     for (int i = 0; i < nb_rows; i++) {
         for (int j = 0; j < nb_columns; j++) {
             // printf("%g ", matrix[j * nb_rows + i]);
-            printf("%.23e ", matrix[j * nb_rows + i]);
+            fprintf(file, "%.23e ", matrix[j * nb_rows + i]);
         }
-        printf("\n");
+        fprintf(file, "\n");
     }
 }
 
-void print_eigvals(int N, const double* eigvals_re, const double* eigvals_im) {
+void print_eigvals(FILE* file, int N, const double* eigvals_re, const double* eigvals_im) {
     for (int i = 0; i < N; i++) {
-        printf("%.5e %+.5ei\n", eigvals_re[i], eigvals_im[i]);
+        fprintf(file, "%.5e %+.5ei\n", eigvals_re[i], eigvals_im[i]);
     }
 }
 
@@ -550,7 +550,7 @@ int main(int argc, char* argv[]) {
 
     prr_ret_type result = prr(n, matrix, n, y0, s->ival[0], m->ival[0], epsilon->dval[0], nb_iterations->ival[0], verbose->count > 0);
 
-    print_eigvals(s->ival[0], result.eigvals_re, result.eigvals_im);
+    print_eigvals(stderr, s->ival[0], result.eigvals_re, result.eigvals_im);
     // if (verbose->count > 0) {
     //     print_matrix(n, s->ival[0], result.eigvecs);
     // }
