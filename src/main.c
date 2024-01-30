@@ -22,6 +22,38 @@ enum failed_operation {
     EIG
 } FAILED_OP;
 
+void load_mtx(double * m, int MATRIX_SIZE, char * filename ) {
+    FILE *file = fopen(filename, "r");
+
+
+    if (file == NULL) {
+        perror("Error opening file");
+        return;
+    }
+
+    int row, col;
+    double value;
+
+    // Initialize the matrix with zeros
+    for (row = 0; row < MATRIX_SIZE; ++row) {
+        for (col = 0; col < MATRIX_SIZE; ++col) {
+             m[row * MATRIX_SIZE + col]= 0.0;
+        }
+    }
+
+    // Read data from the file and fill the matrix
+    while (fscanf(file, "%d %d %lf", &row, &col, &value) == 3) {
+        if (row <= MATRIX_SIZE && col <= MATRIX_SIZE) {
+            m[( row-1)*MATRIX_SIZE + col- 1] = value;
+        } else {
+            fprintf(stderr, "Invalid row or column index in the file.\n");
+        }
+    }
+
+    fclose(file);
+}
+
+
 int load_test_matrix_A(size_t n, double * A ){
     for ( int i = 0; i < n; i ++) {
         for ( int j = 0; j < n; j ++) {
@@ -202,6 +234,8 @@ typedef struct prr_ret_type {
     double* eigvecs;
 } prr_ret_type;
 
+int error=0;
+
 prr_ret_type prr(int N, const double* restrict A, int lda, const double* restrict y0, int s, int m, double epsilon, int max_iterations, int verbose) {
     // double Vm[N * (m + 1)];
     // double B_m1[m * m];
@@ -284,14 +318,16 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                 posix_memalign ((void**)&ipiv, 32, m * sizeof(*ipiv));
 
                 int info = LAPACKE_dsytrf(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
-                if (info != 0) {
+                if (info != 0 && error == 0) {
                     FAILED_OP = LU;
+                    error = 1;
                     fprintf(stderr, "LU factorization failed with info = %d\n", info);
                     // TODO: return error
                 }
                 info = LAPACKE_dsytri(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
-                if (info != 0) {
+                if (info != 0 && error == 0) {
                     FAILED_OP = INV;
+                    error = 1;
                     fprintf(stderr, "Matrix inverse failed with info = %d\n", info);
                     // TODO: return error
                 }
@@ -301,16 +337,17 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                 posix_memalign ((void**)&F_m, 32, m * m * sizeof(*F_m));
 
                 cblas_dsymm(CblasColMajor, CblasLeft, CblasUpper, m, m, 1, B_m1, m, B_m, m, 0, F_m, m);
-                if (verbose ) {
-                    printf("\nFm =\n");
-                    print_matrix(m, m, F_m);
-                }
+                // if (verbose ) {
+                //     printf("\nFm =\n");
+                //     print_matrix(m, m, F_m);
+                // }
                 
                 // could be par
                 info = sorted_eigvals(m, F_m, m, eigvals_re, eigvals_im, eigvecs);
                 free(F_m);
 
-                if (info != 0) {
+                if (info != 0 && error==0) {
+                    error =1;
                     FAILED_OP = EIG;
                     fprintf(stderr, "Eigenvalue compuatation failed with info = %d\n", info);
                     // TODO: return error
@@ -425,7 +462,7 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
 
             } // end single
 // #pragma omp barrier
-
+        if(error==1)break;
         } // end for
     } // end pragma parallel
 
@@ -481,16 +518,30 @@ int main(int argc, char* argv[]) {
         return 1;
     }
    
-    // orig :
-    int n;
-    double* matrix = read_matrix(matrix_file->filename[0], &n);
-    print_matrix(n, n, matrix);
+    // orig : -------------------
+    // int n;
+    // double* matrix = read_matrix(matrix_file->filename[0], &n);
+    // print_matrix(n, n, matrix);
 
-    /// for  benchmark :
-    
-    // int n = 1000;
+
+    /// for  benchmark : -------------------
+    // m->ival[0] = 100;
+    // int n = 3000;
     // double* matrix = malloc(n * n * sizeof(*matrix));
     // load_test_matrix_B(n, matrix);
+
+    //-------------------------------
+    int n = 1138;
+    double* matrix = malloc(n * n * sizeof(*matrix));
+    load_mtx( matrix, n, "../data/1138_bus.mtx" );
+    
+    // int n = 9540;
+    // double* matrix = malloc(n * n * sizeof(*matrix));
+    // load_mtx( matrix, n, "../data/coater2_9540.mtx" );
+
+    // int n = 362;
+    // double* matrix = malloc(n * n * sizeof(*matrix));
+    // load_mtx( matrix, n, "../data/plat362.mtx.gz" );
 
     srand(0);
     double* y0;
@@ -503,9 +554,9 @@ int main(int argc, char* argv[]) {
     prr_ret_type result = prr(n, matrix, n, y0, s->ival[0], m->ival[0], epsilon->dval[0], nb_iterations->ival[0], verbose->count > 0);
 
     print_eigvals(s->ival[0], result.eigvals_re, result.eigvals_im);
-    if (verbose->count > 0) {
-        print_matrix(n, s->ival[0], result.eigvecs);
-    }
+    // if (verbose->count > 0) {
+    //     print_matrix(n, s->ival[0], result.eigvecs);
+    // }
 
     free(matrix);
     free(y0);
