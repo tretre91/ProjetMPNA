@@ -1,5 +1,6 @@
 #include <complex.h>
 #include <float.h>
+#include <lapack.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -57,15 +58,15 @@ int main(int argc, char* argv[]) {
     }
    
     // orig : -------------------
-    int n;
-    double* matrix = read_matrix(matrix_file->filename[0], &n);
+    // int n;
+    // double* matrix = read_matrix(matrix_file->filename[0], &n);
 
 
     /// for  benchmark : -------------------
     // m->ival[0] = 100;
-    // int n = 3000;
-    // double* matrix = malloc(n * n * sizeof(*matrix));
-    // load_test_matrix_B(n, matrix);
+    int n = 3000;
+    double* matrix = malloc(n * n * sizeof(*matrix));
+    load_test_matrix_B(n, matrix);
 
     //-------------------------------
     // int n = 1138;
@@ -92,7 +93,7 @@ int main(int argc, char* argv[]) {
 
     print_eigvals(stderr, s->ival[0], result.eigvals_re, result.eigvals_im);
     // if (verbose->count > 0) {
-    //     print_matrix(n, s->ival[0], result.eigvecs);
+    //     print_matrix(stderr,n, s->ival[0], result.eigvecs);
     // }
 
     free(matrix);

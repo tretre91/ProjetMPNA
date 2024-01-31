@@ -26,14 +26,18 @@ cd ${SLURM_SUBMIT_DIR}
 
 make -B
 
-echo "nthreads;n;m;s;mean;dev;version" > data.dat
-OMP_NUM_THREADS=1 ./prr_bench_blas ../data/1138_bus.mtx -s 2 -m 8 -i 300 >> data.dat
-OMP_NUM_THREADS=2 ./prr_bench_blas ../data/1138_bus.mtx -s 2 -m 8 -i 300 >> data.dat
-OMP_NUM_THREADS=4 ./prr_bench_blas ../data/1138_bus.mtx -s 2 -m 8 -i 300 >> data.dat
-OMP_NUM_THREADS=8 ./prr_bench_blas ../data/1138_bus.mtx -s 2 -m 8 -i 300 >> data.dat
+echo "nthreads;n;m;s;time;dev;version" > data.dat
+OMP_NUM_THREADS=1 ./prr_bench_blas   ../data/1138_bus.mtx -s 4 -m 16 -v -i 100 >> data.dat
+OMP_NUM_THREADS=2 ./prr_bench_blas   ../data/1138_bus.mtx -s 4 -m 16 -v -i 100 >> data.dat
+OMP_NUM_THREADS=4 ./prr_bench_blas   ../data/1138_bus.mtx -s 4 -m 16 -v -i 100 >> data.dat
+OMP_NUM_THREADS=8 ./prr_bench_blas   ../data/1138_bus.mtx -s 4 -m 16 -v -i 100 >> data.dat
+OMP_NUM_THREADS=16 ./prr_bench_blas  ../data/1138_bus.mtx -s 4 -m 16 -v -i 100 >> data.dat
 
-OMP_NUM_THREADS=1 ./prr_bench      ../data/1138_bus.mtx -s 2 -m 8 -i 300 >> data.dat
-OMP_NUM_THREADS=2 ./prr_bench      ../data/1138_bus.mtx -s 2 -m 8 -i 300 >> data.dat
-OMP_NUM_THREADS=4 ./prr_bench      ../data/1138_bus.mtx -s 2 -m 8 -i 300 >> data.dat
-OMP_NUM_THREADS=8 ./prr_bench      ../data/1138_bus.mtx -s 2 -m 8 -i 300 >> data.dat
+
+OMP_NUM_THREADS=1 ./prr_bench   ../data/1138_bus.mtx -s 4 -m 16 -v -i 100 >> data.dat
+OMP_NUM_THREADS=2 ./prr_bench   ../data/1138_bus.mtx -s 4 -m 16 -v -i 100 >> data.dat
+OMP_NUM_THREADS=4 ./prr_bench   ../data/1138_bus.mtx -s 4 -m 16 -v -i 100 >> data.dat
+OMP_NUM_THREADS=8 ./prr_bench   ../data/1138_bus.mtx -s 4 -m 16 -v -i 100 >> data.dat
+OMP_NUM_THREADS=16 ./prr_bench  ../data/1138_bus.mtx -s 4 -m 16 -v -i 100 >> data.dat
+
 
