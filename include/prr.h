@@ -9,8 +9,14 @@
 #include <unistd.h>
 
 // #define LAPACK_DISABLE_NAN_CHECK
+#if __has_include(<openblas/cblas.h>)
+#include <openblas/cblas.h>
+#include <openblas/lapacke.h>
+#else
 #include <cblas.h>
 #include <lapacke.h>
+#endif
+
 
 #include "argtable3.h"
 #include "eig.h"

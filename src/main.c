@@ -9,8 +9,6 @@
 #include <unistd.h>
 
 // #define LAPACK_DISABLE_NAN_CHECK
-#include <cblas.h>
-#include <lapacke.h>
 
 #include "argtable3.h"
 #include "eig.h"

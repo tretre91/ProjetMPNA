@@ -12,7 +12,7 @@ add_subdirectory(deps/argtable)
 
 add_library(common INTERFACE)
 target_sources(common INTERFACE ${SOURCES})
-target_link_libraries(common INTERFACE argtable3 BLAS::BLAS LAPACK::LAPACK OpenMP::OpenMP_C -llapacke -llapack -lcblas -lblas)
+target_link_libraries(common INTERFACE argtable3 BLAS::BLAS LAPACK::LAPACK OpenMP::OpenMP_C)
 target_include_directories(common INTERFACE include/)
 target_compile_features(common INTERFACE c_std_99)
 
