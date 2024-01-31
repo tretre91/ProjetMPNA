@@ -44,9 +44,10 @@ target_compile_definitions(prr_blas PRIVATE -DUSE_CBLAS)
 
 #### bench
 add_executable(prr_bench src/bench.c src/prr.c src/eig.c src/mat.c)
-target_link_libraries(prr_bench PRIVATE common)
+target_link_libraries(prr_bench PRIVATE common )
+target_compile_definitions(prr_bench PRIVATE  -DBENCH)
 
 add_executable(prr_bench_blas src/bench.c src/prr.c src/eig.c src/mat.c)
 target_link_libraries(prr_bench_blas PRIVATE common)
-target_compile_definitions(prr_bench_blas PRIVATE -DUSE_CBLAS)
+target_compile_definitions(prr_bench_blas PRIVATE -DUSE_CBLAS -DBENCH)
 

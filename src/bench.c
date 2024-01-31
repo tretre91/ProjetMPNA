@@ -7,15 +7,130 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
-// #define LAPACK_DISABLE_NAN_CHECK
-#include <cblas.h>
-#include <lapacke.h>
+#include <omp.h>
 
 #include "argtable3.h"
 #include "eig.h"
 #include "mat.h"
 #include "prr.h"
+
+void print_double(double *restrict a, int n) {
+    for (int i = 0; i < n * n; i++)
+        printf("%lf%c", a[i], ((i + 1) % n) ? ' ' : '\n');
+
+    printf("\n");
+}
+
+//
+
+
+//
+void sort_double(double *restrict a, int n) {
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++)
+            if (a[i] > a[j]) {
+                double tmp = a[i];
+
+                a[i] = a[j];
+                a[j] = tmp;
+            }
+}
+
+//
+double mean_double(double *restrict a, int n) {
+    double m = 0.0;
+
+    for (int i = 0; i < n; i++)
+        m += a[i];
+
+    m /= (double)n;
+
+    return m;
+}
+
+//
+double stddev_double(double *restrict a, int n) {
+    double d = 0.0;
+    double m = mean_double(a, n);
+
+    for (int i = 0; i < n; i++)
+        d += (a[i] - m) * (a[i] - m);
+
+    d /= (double)(n - 1);
+
+    return sqrt(d);
+}
+
+double gettime() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec*1e0 + ts.tv_nsec*1e-9;
+}
+
+int run_benchmark(int n, const double* restrict matrix, int lda, const double* restrict y0, int s, int m, double epsilon, int max_iterations, int verbose) {
+
+    //
+    int r = 3;
+    int MAX_SAMPLES = 3;
+    double elapsed = 0.0;
+    double t1, t2;
+    double samples[MAX_SAMPLES];
+
+    //
+    for (int i = 0; i < MAX_SAMPLES; i++) {
+        do {
+            // clock_gettime(CLOCK_MONOTONIC_RAW, &t1);
+            t1 = gettime();
+
+            for (int j = 0; j < r; j++){
+                prr_ret_type result = prr(n, matrix, lda, y0, s, m, epsilon, max_iterations, verbose);
+            }
+
+            t2 = gettime();
+            // clock_gettime(CLOCK_MONOTONIC_RAW, &t2);
+
+            elapsed = (double)(t2 - t1) / (double)r;
+        } while (elapsed <= 0.0);
+
+        samples[i] = elapsed;
+    }
+    
+    //
+    sort_double(samples, MAX_SAMPLES);
+
+    //
+    double min = samples[0];
+    double max = samples[MAX_SAMPLES - 1];
+    double mean = mean_double(samples, MAX_SAMPLES);
+    double dev = stddev_double(samples, MAX_SAMPLES);
+
+    // Size in MiB / time in seconds
+
+    //
+    // printf("%10s; %15.3lf; %15.3lf; %15.3lf; %10llu; %10llu; %15.3lf; %15.3lf; "
+    //        "%15.3lf; %15.3lf (%6.3lf %%); %10.3lf; %10s\n",
+    //        "prr",
+    //        3 * (double)0, // 3 matices
+    //        3 * (double)0, // 3 matrices
+    //        3 * (double)0, // 3 matrices
+    //        n, r, min, max, mean, dev, (dev * 100.0 / mean), (double)0, "prr");
+
+    // printf("nthreads;n;m;s;mean;dev;version");
+    int nthreads = omp_get_max_threads();    
+    printf("%d;%d;%d;%d;%f;%f;%s\n", nthreads,n, m, s, mean, dev, 
+#ifdef USE_CBLAS
+           "blas"
+#else
+           "no_blas"
+#endif
+           );
+
+
+    
+    return 0;
+}
 
 
 int main(int argc, char* argv[]) {
@@ -63,6 +178,31 @@ int main(int argc, char* argv[]) {
     double* matrix = read_matrix(matrix_file->filename[0], &n);
 
 
+
+    srand(0);
+    double* y0;
+    posix_memalign ((void**)&y0, 32, n  * sizeof(*y0));
+
+    for (int i = 0; i < n; i++) {
+        y0[i] = rand() / (double)RAND_MAX;
+    }
+
+
+    // printf("%10s; %15s; %15s; %15s; %10s; %10s; %15s; %15s; %15s; %26s; %10s; %10s\n",
+    //        "titre", "KiB", "MiB", "GiB", "n", "r", "min", "max", "mean",
+    //        "stddev (%)", "MiB/s", "titre");
+
+    run_benchmark(n, matrix, n, y0, s->ival[0], m->ival[0], epsilon->dval[0], nb_iterations->ival[0], verbose->count > 0);
+
+
+
+    free(matrix);
+    free(y0);
+    arg_freetable(argtable, nb_opts);
+}
+
+
+
     /// for  benchmark : -------------------
     // m->ival[0] = 100;
     // int n = 3000;
@@ -82,25 +222,4 @@ int main(int argc, char* argv[]) {
     // double* matrix = malloc(n * n * sizeof(*matrix));
     // load_mtx( matrix, n, "../data/plat362.mtx.gz" );
 
-    srand(0);
-    double* y0;
-    posix_memalign ((void**)&y0, 32, n  * sizeof(*y0));
-
-    for (int i = 0; i < n; i++) {
-        y0[i] = rand() / (double)RAND_MAX;
-    }
-
-    prr_ret_type result = prr(n, matrix, n, y0, s->ival[0], m->ival[0], epsilon->dval[0], nb_iterations->ival[0], verbose->count > 0);
-
-    print_eigvals(stderr, s->ival[0], result.eigvals_re, result.eigvals_im);
-    // if (verbose->count > 0) {
-    //     print_matrix(n, s->ival[0], result.eigvecs);
-    // }
-
-    free(matrix);
-    free(y0);
-    free(result.eigvals_re);
-    free(result.eigvals_im);
-    free(result.eigvecs);
-    arg_freetable(argtable, nb_opts);
-}
+ 

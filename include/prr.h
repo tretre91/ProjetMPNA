@@ -1,3 +1,4 @@
+#pragma once
 #include <complex.h>
 #include <float.h>
 #include <math.h>
@@ -17,6 +18,7 @@
 #include <lapacke.h>
 #endif
 
+#include <omp.h>
 
 #include "argtable3.h"
 #include "eig.h"
@@ -24,7 +26,7 @@
 
 void print_eigvals(FILE* file, int N, const double* eigvals_re, const double* eigvals_im);
 double dot_product(int N, const double* restrict x, const double* restrict y) ;
-void matvec_product(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* y) ;
+void matvec_product(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) ;
 void omp_matvec_product(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) ;
 void matvec_product_col_major(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) ;
 double compute_residual(int N, const double*  restrict A, int lda, double eigval, const double* restrict eigvec);

@@ -32,7 +32,7 @@ double dot_product(int N, const double* restrict x, const double* restrict y) {
 
 
 
-void matvec_product(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* y) {
+void matvec_product(int M, int N, const double* restrict A, const int lda, const double* restrict x, double* restrict y) {
     for (int i = 0; i < M; i++) {
         y[i] = dot_product(N, &A[i * lda], x);
     }
@@ -180,19 +180,23 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                 posix_memalign ((void**)&ipiv, 32, m * sizeof(*ipiv));
 
                 int info = LAPACKE_dsytrf(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
+                #ifndef BENCH
                 if (info != 0 && error == 0) {
                     FAILED_OP = LU;
                     error = 1;
                     fprintf(stderr, "LU factorization failed with info = %d\n", info);
                     // TODO: return error
                 }
+                #endif
                 info = LAPACKE_dsytri(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
+                #ifndef BENCH
                 if (info != 0 && error == 0) {
                     FAILED_OP = INV;
                     error = 1;
                     fprintf(stderr, "Matrix inverse failed with info = %d\n", info);
                     // TODO: return error
                 }
+                #endif
                 free(ipiv);
 
                 double* F_m;
@@ -208,12 +212,14 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                 info = sorted_eigvals(m, F_m, m, eigvals_re, eigvals_im, eigvecs);
                 free(F_m);
 
+                #ifndef BENCH
                 if (info != 0 && error==0) {
                     error =1;
                     FAILED_OP = EIG;
                     fprintf(stderr, "Eigenvalue compuatation failed with info = %d\n", info);
                     // TODO: return error
                 }
+                #endif
             }
 
 
@@ -278,13 +284,15 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                     }
 
                 free(conjugate_eigvec);
-
+                
+                #ifndef BENCH
                 printf("%d %g\n", it, max_residual);
 
                 // cancel break for now TODO
                 // if (max_residual < epsilon && false) {
                 //     break;
                 // }
+                #endif
 
                 // redémarage
                 // note : directly update &Vm[0 * N]
@@ -325,8 +333,16 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
         if(error==1)break;
         } // end for
     } // end pragma parallel
-
+    
+#ifndef BENCH
     prr_ret_type ret = {max_residual, eigvals_re, eigvals_im, q};
+#else
+    free(eigvals_re);
+    free(eigvals_im);
+    free(q);
+    prr_ret_type ret = {max_residual, NULL, NULL, NULL};
+#endif
+
     free(eigvecs);
     free( Vm );
     free( B_m1 );
