@@ -99,10 +99,6 @@ double compute_complex_residual(int N, const double* restrict A, int lda, double
 int error=0;
 
 prr_ret_type prr(int N, const double* restrict A, int lda, const double* restrict y0, int s, int m, double epsilon, int max_iterations, int verbose) {
-    // double Vm[N * (m + 1)];
-    // double B_m1[m * m];
-    // double B_m[m * m];
-    // double C[2 * m];
     double * Vm;
     double * B_m1;
     double * B_m;
@@ -147,10 +143,6 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
 
             for (int i = 1; i < m + 1; i++) {
                 omp_matvec_product(N, N, A, lda, &Vm[(i - 1) * N], &Vm[i * N]);
-                // const double norm = 1 / sqrt(dot_product(N, &Vmtmp[i * N], &Vmtmp[i * N]));
-                // for (int j = 0; j < N; j++) {
-                //     Vmtmp[i * N + j] *= norm;
-                // }
             }
 
 #pragma omp for
@@ -185,7 +177,6 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                     FAILED_OP = LU;
                     error = 1;
                     fprintf(stderr, "LU factorization failed with info = %d\n", info);
-                    // TODO: return error
                 }
                 #endif
                 info = LAPACKE_dsytri(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
@@ -194,7 +185,6 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                     FAILED_OP = INV;
                     error = 1;
                     fprintf(stderr, "Matrix inverse failed with info = %d\n", info);
-                    // TODO: return error
                 }
                 #endif
                 free(ipiv);
@@ -203,12 +193,7 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                 posix_memalign ((void**)&F_m, 32, m * m * sizeof(*F_m));
 
                 cblas_dsymm(CblasColMajor, CblasLeft, CblasUpper, m, m, 1, B_m1, m, B_m, m, 0, F_m, m);
-                // if (verbose ) {
-                //     printf("\nFm =\n");
-                //     print_matrix(m, m, F_m);
-                // }
-                
-                // could be par
+                                // could be par
                 info = sorted_eigvals(m, F_m, m, eigvals_re, eigvals_im, eigvecs);
                 free(F_m);
 
@@ -243,8 +228,7 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
 
                 for (int i = 0; i < s; i++) {
                     if (is_complex) {
-#pragma omp barrier // je sais pas pourquoi il faut une omp barrier mais bon ca fonctionne avec
-
+#pragma omp barrier 
                         double local_residual = compute_complex_residual(N, A, lda, eigvals_re[i], eigvals_im[i], &q[(i - 1) * N], conjugate_eigvec);
 #pragma omp single
                         {
@@ -288,14 +272,11 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                 #ifndef BENCH
                 printf("%d %g\n", it, max_residual);
 
-                // cancel break for now TODO
                 // if (max_residual < epsilon && false) {
                 //     break;
                 // }
                 #endif
 
-                // redémarage
-                // note : directly update &Vm[0 * N]
 
                 memset(Vm, 0, N * sizeof(*Vm));
             }

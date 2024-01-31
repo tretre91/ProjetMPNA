@@ -81,7 +81,6 @@ int run_benchmark(int n, const double* restrict matrix, int lda, const double* r
     //
     for (int i = 0; i < MAX_SAMPLES; i++) {
         do {
-            // clock_gettime(CLOCK_MONOTONIC_RAW, &t1);
             t1 = gettime();
 
             for (int j = 0; j < r; j++){
@@ -89,7 +88,6 @@ int run_benchmark(int n, const double* restrict matrix, int lda, const double* r
             }
 
             t2 = gettime();
-            // clock_gettime(CLOCK_MONOTONIC_RAW, &t2);
 
             elapsed = (double)(t2 - t1) / (double)r;
         } while (elapsed <= 0.0);
@@ -106,17 +104,6 @@ int run_benchmark(int n, const double* restrict matrix, int lda, const double* r
     double mean = mean_double(samples, MAX_SAMPLES);
     double dev = stddev_double(samples, MAX_SAMPLES);
 
-    // Size in MiB / time in seconds
-
-    //
-    // printf("%10s; %15.3lf; %15.3lf; %15.3lf; %10llu; %10llu; %15.3lf; %15.3lf; "
-    //        "%15.3lf; %15.3lf (%6.3lf %%); %10.3lf; %10s\n",
-    //        "prr",
-    //        3 * (double)0, // 3 matices
-    //        3 * (double)0, // 3 matrices
-    //        3 * (double)0, // 3 matrices
-    //        n, r, min, max, mean, dev, (dev * 100.0 / mean), (double)0, "prr");
-
     // printf("nthreads;n;m;s;mean;dev;version");
     int nthreads = omp_get_max_threads();    
     printf("%d;%d;%d;%d;%f;%f;%s\n", nthreads,n, m, s, mean, dev, 
@@ -126,7 +113,6 @@ int run_benchmark(int n, const double* restrict matrix, int lda, const double* r
            "no_blas"
 #endif
            );
-
 
     
     return 0;
@@ -178,7 +164,6 @@ int main(int argc, char* argv[]) {
     double* matrix = read_matrix(matrix_file->filename[0], &n);
 
 
-
     srand(0);
     double* y0;
     posix_memalign ((void**)&y0, 32, n  * sizeof(*y0));
@@ -188,10 +173,6 @@ int main(int argc, char* argv[]) {
     }
 
 
-    // printf("%10s; %15s; %15s; %15s; %10s; %10s; %15s; %15s; %15s; %26s; %10s; %10s\n",
-    //        "titre", "KiB", "MiB", "GiB", "n", "r", "min", "max", "mean",
-    //        "stddev (%)", "MiB/s", "titre");
-
     run_benchmark(n, matrix, n, y0, s->ival[0], m->ival[0], epsilon->dval[0], nb_iterations->ival[0], verbose->count > 0);
 
 
@@ -200,26 +181,3 @@ int main(int argc, char* argv[]) {
     free(y0);
     arg_freetable(argtable, nb_opts);
 }
-
-
-
-    /// for  benchmark : -------------------
-    // m->ival[0] = 100;
-    // int n = 3000;
-    // double* matrix = malloc(n * n * sizeof(*matrix));
-    // load_test_matrix_B(n, matrix);
-
-    //-------------------------------
-    // int n = 1138;
-    // double* matrix = malloc(n * n * sizeof(*matrix));
-    // load_mtx( matrix, n, "data/1138_bus.mtx" );
-    
-    // int n = 9540;
-    // double* matrix = malloc(n * n * sizeof(*matrix));
-    // load_mtx( matrix, n, "../data/coater2_9540.mtx" );
-
-    // int n = 362;
-    // double* matrix = malloc(n * n * sizeof(*matrix));
-    // load_mtx( matrix, n, "../data/plat362.mtx.gz" );
-
- 

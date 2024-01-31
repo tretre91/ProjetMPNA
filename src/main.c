@@ -1,5 +1,6 @@
 #include <complex.h>
 #include <float.h>
+#include <lapack.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -57,28 +58,8 @@ int main(int argc, char* argv[]) {
     }
    
     // orig : -------------------
-    // int n;
-    // double* matrix = read_matrix(matrix_file->filename[0], &n);
-
-
-    /// for  benchmark : -------------------
-    // m->ival[0] = 100;
-    int n = 3000;
-    double* matrix = malloc(n * n * sizeof(*matrix));
-    load_test_matrix_B(n, matrix);
-
-    //-------------------------------
-    // int n = 1138;
-    // double* matrix = malloc(n * n * sizeof(*matrix));
-    // load_mtx( matrix, n, "data/1138_bus.mtx" );
-    
-    // int n = 9540;
-    // double* matrix = malloc(n * n * sizeof(*matrix));
-    // load_mtx( matrix, n, "../data/coater2_9540.mtx" );
-
-    // int n = 362;
-    // double* matrix = malloc(n * n * sizeof(*matrix));
-    // load_mtx( matrix, n, "../data/plat362.mtx.gz" );
+    int n;
+    double* matrix = read_matrix(matrix_file->filename[0], &n);
 
     srand(0);
     double* y0;
