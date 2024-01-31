@@ -1,15 +1,8 @@
 #pragma once
 #include <complex.h>
-#include <float.h>
-#include <math.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 
-// #define LAPACK_DISABLE_NAN_CHECK
 #if __has_include(<openblas/cblas.h>)
 #include <openblas/cblas.h>
 #include <openblas/lapacke.h>
@@ -18,10 +11,6 @@
 #include <lapacke.h>
 #endif
 
-#include <omp.h>
-
-#include "argtable3.h"
-#include "eig.h"
 #include "mat.h"
 
 void print_eigvals(FILE* file, int N, const double* eigvals_re, const double* eigvals_im);

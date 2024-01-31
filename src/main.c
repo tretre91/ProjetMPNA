@@ -1,18 +1,11 @@
 #include <complex.h>
-#include <float.h>
 #include <lapack.h>
-#include <math.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-
-// #define LAPACK_DISABLE_NAN_CHECK
 
 #include "argtable3.h"
-#include "eig.h"
 #include "mat.h"
 #include "prr.h"
 
@@ -62,8 +55,7 @@ int main(int argc, char* argv[]) {
     double* matrix = read_matrix(matrix_file->filename[0], &n);
 
     srand(0);
-    double* y0;
-    posix_memalign ((void**)&y0, 32, n  * sizeof(*y0));
+    double* y0 = malloc(n  * sizeof(*y0));
 
     for (int i = 0; i < n; i++) {
         y0[i] = rand() / (double)RAND_MAX;

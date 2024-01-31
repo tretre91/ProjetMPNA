@@ -1,4 +1,7 @@
+#include <omp.h>
+
 #include "prr.h"
+#include "eig.h"
 
 
 enum failed_operation {
@@ -99,27 +102,18 @@ double compute_complex_residual(int N, const double* restrict A, int lda, double
 int error=0;
 
 prr_ret_type prr(int N, const double* restrict A, int lda, const double* restrict y0, int s, int m, double epsilon, int max_iterations, int verbose) {
-    double * Vm;
-    double * B_m1;
-    double * B_m;
-    double * C;
+    double* Vm = malloc(N * (m + 1) * sizeof(*Vm) );
+    double* B_m1 = malloc(m * m * sizeof(*B_m1) );
+    double* B_m = malloc(m * m * sizeof(*B_m) );
+    double* C = malloc(2 * m * sizeof(*C) );
 
-    posix_memalign ((void**)&Vm, 32, N * (m + 1) * sizeof(*Vm) );
-    posix_memalign ((void**)&B_m1, 32, m * m * sizeof(*B_m1) );
-    posix_memalign ((void**)&B_m, 32, m * m * sizeof(*B_m) );
-    posix_memalign ((void**)&C, 32, 2 * m * sizeof(*C) );
+    double* eigvals_re = malloc(m * sizeof(*eigvals_re) );
 
-    double* eigvals_re;
-    posix_memalign ((void**)&eigvals_re, 32, m * sizeof(*eigvals_re) );
+    double* eigvals_im = malloc(m * sizeof(*eigvals_im) );
 
-    double* eigvals_im;
-    posix_memalign ((void**)&eigvals_im, 32, m * sizeof(*eigvals_im) );
+    double* eigvecs = malloc(m * m * sizeof(*eigvecs) );
 
-    double * eigvecs;
-    posix_memalign ((void**)&eigvecs, 32, m * m * sizeof(*eigvecs) );
-
-    double* q;
-    posix_memalign ((void**)&q, 32, (m + 1) * N * sizeof(*q) );
+    double* q = malloc((m + 1) * N * sizeof(*q) );
 
     double max_residual = DBL_MIN;
 
@@ -130,10 +124,11 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
 
     memcpy(Vm, y0, N * sizeof(double));
     const double norm_y0 = 1 / sqrt(dot_product(N, Vm, Vm));
-#pragma omp parallel
+    
+    #pragma omp parallel
     {
 
-#pragma omp for
+        #pragma omp for
         for (int i = 0; i < N; i++) {
             Vm[i] *= norm_y0;
         }
@@ -145,13 +140,13 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                 omp_matvec_product(N, N, A, lda, &Vm[(i - 1) * N], &Vm[i * N]);
             }
 
-#pragma omp for
+            #pragma omp for
             for (int i = 0; i < m; i++) {
                 C[2 * i] = dot_product(N, &Vm[i * N], &Vm[i * N]);
                 C[2 * i + 1] = dot_product(N, &Vm[i * N], &Vm[(i + 1) * N]);
             }
 
-#pragma omp for
+            #pragma omp for
             for (int i = 0; i < m; i++) {
                 B_m1[i * m + i] = C[i + i];
                 B_m[i * m + i] = C[i + i + 1];
@@ -164,12 +159,11 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                 }
             }
 
-#pragma omp single
+            #pragma omp single
             {
                 // étape 2 : résolution dans le sous-espace
 
-                int32_t* ipiv;
-                posix_memalign ((void**)&ipiv, 32, m * sizeof(*ipiv));
+                int32_t* ipiv = malloc(m * sizeof(*ipiv));
 
                 int info = LAPACKE_dsytrf(LAPACK_COL_MAJOR, 'U', m, B_m1, m, ipiv);
                 #ifndef BENCH
@@ -189,8 +183,7 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
                 #endif
                 free(ipiv);
 
-                double* F_m;
-                posix_memalign ((void**)&F_m, 32, m * m * sizeof(*F_m));
+                double* F_m = malloc(m * m * sizeof(*F_m));
 
                 cblas_dsymm(CblasColMajor, CblasLeft, CblasUpper, m, m, 1, B_m1, m, B_m, m, 0, F_m, m);
                                 // could be par
@@ -208,64 +201,62 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
             }
 
 
-                // étape 3 : retour dans l'espace de départ
-#pragma omp for
+            // étape 3 : retour dans l'espace de départ
+            #pragma omp for
             for (int i = 0; i < m; i++) {
                 matvec_product_col_major(N, m, Vm, N, eigvecs + i * m, q + i * N);
             }
 
 
 
-// étape 4 : calcul de l'erreur
-#pragma omp single
+            // étape 4 : calcul de l'erreur
+            #pragma omp single
             {
                 max_residual = DBL_MIN;
                 is_complex = false;
-                posix_memalign ((void**)&conjugate_eigvec, 32, N * sizeof(conjugate_eigvec));
+                conjugate_eigvec = malloc(N * sizeof(conjugate_eigvec));
             }
-// #pragma omp single
-//             {
 
-                for (int i = 0; i < s; i++) {
-                    if (is_complex) {
-#pragma omp barrier 
-                        double local_residual = compute_complex_residual(N, A, lda, eigvals_re[i], eigvals_im[i], &q[(i - 1) * N], conjugate_eigvec);
-#pragma omp single
-                        {
-                            cur_residual = local_residual;
-                            is_complex = false;
-                        }
-
-                    } else if (eigvals_im[i] != 0.0) {
-
-                        const double* eigvec_im = &q[(i + 1) * N];
-#pragma omp single
-                        {
-                            for (int j = 0; j < N; j++) {
-                                conjugate_eigvec[j] = -eigvec_im[j];
-                            }
-                        }
-                        double local_residual = compute_complex_residual(N, A, lda, eigvals_re[i], eigvals_im[i], &q[i * N], eigvec_im);
-#pragma omp single
-                        {
-                            cur_residual = local_residual;
-                            is_complex = true;
-                        }
-
-                    } else {
-                         double local_residual = compute_residual(N, A, lda, eigvals_re[i], &q[i * N]);
-#pragma omp single
-                        {
-                            cur_residual = local_residual;
-                        }
+            for (int i = 0; i < s; i++) {
+                if (is_complex) {
+                    #pragma omp barrier 
+                    double local_residual = compute_complex_residual(N, A, lda, eigvals_re[i], eigvals_im[i], &q[(i - 1) * N], conjugate_eigvec);
+                    #pragma omp single
+                    {
+                        cur_residual = local_residual;
+                        is_complex = false;
                     }
 
+                } else if (eigvals_im[i] != 0.0) {
+
+                    const double* eigvec_im = &q[(i + 1) * N];
+                    #pragma omp single
+                    {
+                        for (int j = 0; j < N; j++) {
+                            conjugate_eigvec[j] = -eigvec_im[j];
+                        }
+                    }
+                    double local_residual = compute_complex_residual(N, A, lda, eigvals_re[i], eigvals_im[i], &q[i * N], eigvec_im);
+                    #pragma omp single
+                    {
+                        cur_residual = local_residual;
+                        is_complex = true;
+                    }
+
+                } else {
+                    double local_residual = compute_residual(N, A, lda, eigvals_re[i], &q[i * N]);
+                    #pragma omp single
+                    {
+                        cur_residual = local_residual;
+                    }
                 }
-#pragma omp single
+
+            }
+            #pragma omp single
             {
-                    if (cur_residual > max_residual) {
-                        max_residual = cur_residual;
-                    }
+                if (cur_residual > max_residual) {
+                    max_residual = cur_residual;
+                }
 
                 free(conjugate_eigvec);
                 
@@ -280,7 +271,8 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
 
                 memset(Vm, 0, N * sizeof(*Vm));
             }
-#pragma omp single
+            
+            #pragma omp single
             {
 
                 bool prev_is_complex = false;
@@ -310,8 +302,10 @@ prr_ret_type prr(int N, const double* restrict A, int lda, const double* restric
 
 
             } // end single
-// #pragma omp barrier
-        if(error==1)break;
+
+            if(error==1) {
+                break;
+            }
         } // end for
     } // end pragma parallel
     

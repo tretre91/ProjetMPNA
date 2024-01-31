@@ -1,4 +1,8 @@
+#if __has_include(<openblas/cblas.h>)
+#include <openblas/lapacke.h>
+#else
 #include <lapacke.h>
+#endif
 #include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
