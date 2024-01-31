@@ -15,9 +15,11 @@
 set -x
 module purge
 
-module load cmake/3.21.4/gcc-11.2.0
+module load llvm/11.0.0
+module load cmake/3.27.9_spack2021_gcc-12.2.0-rvyk
 module load netlib-lapack/3.9.1/gcc-11.2.0
-module load openblas/0.3.8/gcc-9.2.0
+module load openblas/0.3.25_spack2021_gcc-12.2.0-l4ru
+module load gcc/10.2.0_spack2021_gcc-10.2.0-gdnn
 
 cd ${SLURM_SUBMIT_DIR}
 
@@ -35,5 +37,7 @@ make -B
 # time OMP_NUM_THREADS=4 ./prr_blas ../data/test4.mat -s 2 -m 4 -i 100
 # time OMP_NUM_THREADS=8 ./prr_blas ../data/test4.mat -s 2 -m 4 -i 100
 
-OMP_NUM_THREADS=8 maqao.intel64 oneview -sampling-rate=high -R1 -xp=maqao_prr_cblas --replace --include-kernel sampling-rate=high -- ./prr_blas ../data/test4.mat -s 2 -m 4 -v -i 100
-OMP_NUM_THREADS=8 maqao.intel64 oneview -sampling-rate=high -R1 -xp=maqao_prr       --replace --include-kernel sampling-rate=high -- ./prr      ../data/test4.mat -s 2 -m 4 -v -i 100
+# OMP_NUM_THREADS=8 maqao.intel64 oneview -sampling-rate=high -R1 -xp=maqao_prr_cblas --replace --include-kernel sampling-rate=high -- ./prr_blas ../data/test4.mat -s 2 -m 4 -v -i 100
+# OMP_NUM_THREADS=8 maqao.intel64 oneview -sampling-rate=high -R1 -xp=maqao_prr       --replace --include-kernel sampling-rate=high -- ./prr      ../data/test4.mat -s 2 -m 4 -v -i 100
+
+OMP_NUM_THREADS=8 ./prr_blas ../data/1138_bus.mtx -s 2 -m 8 -i 150  -v > epsilon.txt
