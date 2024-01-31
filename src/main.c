@@ -1,6 +1,5 @@
 #include <complex.h>
 #include <float.h>
-#include <lapack.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
